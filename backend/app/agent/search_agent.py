@@ -40,7 +40,7 @@ async def process_profile(profile_dict: dict) -> OpportunityList:
     # STAGE 1: Strategize
     strategy_prompt = f"""
     You are an expert technical recruiter for FAANG.
-    Analyze this student's profile:
+    Analyze this student's profile. CAREFULLY CORRECT ANY TYPOS OR MISSPELLINGS in the branch or interests before processing (e.g. "ELECTRONIC AND COMMUNICATION I" -> "Electronics and Communication Engineering").
     Branch: {profile_dict.get('branch')}
     Year: {profile_dict.get('year')}
     Interests: {', '.join(profile_dict.get('interests', []))}
@@ -101,7 +101,9 @@ async def process_profile(profile_dict: dict) -> OpportunityList:
     2. Filter out any opportunity completely irrelevant to the {profile_dict.get('branch')} branch.
     3. If there are no perfect matches, find at least ONE adjacent opportunity from the text that aligns with their interests.
     
-    For EACH opportunity that passes, provide a ONE-SENTENCE personalized reason why THIS specific student should apply, explicitly connecting their {profile_dict.get('branch')} background and {profile_dict.get('year')} year status to the role.
+    For EACH opportunity that passes:
+    - Provide a concise `description` detailing exactly what the program/internship/hackathon is.
+    - Provide a ONE-SENTENCE personalized `reason` why THIS specific student should apply, explicitly connecting their {profile_dict.get('branch')} background and {profile_dict.get('year')} year status to the role.
     
     Return the valid opportunities formatted as a JSON list.
     """

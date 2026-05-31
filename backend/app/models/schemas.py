@@ -6,6 +6,7 @@ class Opportunity(BaseModel):
     type: str  # Hackathon, Certification, Competition, Internship
     deadline: str
     link: str
+    description: str  # Short summary of the opportunity
     time_commitment: str
     reason: str  # "Why this is for you"
 

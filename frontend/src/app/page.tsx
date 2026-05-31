@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export default function Home() {
   const [formData, setFormData] = useState({
@@ -14,6 +14,18 @@ export default function Home() {
   const [opportunities, setOpportunities] = useState<any[]>([]);
   const [queriesUsed, setQueriesUsed] = useState<string[]>([]);
   const [actionStatuses, setActionStatuses] = useState<{[key: string]: string}>({});
+
+  // Load saved statuses from local storage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem("radar_action_statuses");
+    if (saved) {
+      try {
+        setActionStatuses(JSON.parse(saved));
+      } catch (e) {
+        console.error("Failed to parse local storage", e);
+      }
+    }
+  }, []);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,9 +64,9 @@ export default function Home() {
   };
 
   const updateStatus = (id: string, newStatus: string) => {
-      // Optimistic UI Update
-      setActionStatuses(prev => ({...prev, [id]: newStatus}));
-      // In a real app, fire API call to update status here
+      const newActionStatuses = {...actionStatuses, [id]: newStatus};
+      setActionStatuses(newActionStatuses);
+      localStorage.setItem("radar_action_statuses", JSON.stringify(newActionStatuses));
   };
 
   return (
@@ -64,7 +76,7 @@ export default function Home() {
           <h1 className="text-5xl font-extrabold tracking-tight bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
             Opportunity Radar
           </h1>
-          <p className="text-gray-400 text-lg">FAANG-Tier Agentic AI. Don't just search—strategize.</p>
+          <p className="text-gray-400 text-lg">Find high-impact opportunities that match your exact profile.</p>
         </header>
 
         <div className="grid md:grid-cols-3 gap-8">
@@ -217,8 +229,13 @@ export default function Home() {
                     </span>
                   </div>
                   
-                  <div className="mb-4">
-                    <p className="text-sm text-gray-400 mb-1">Time Commitment: <span className="text-gray-300">{opp.time_commitment}</span></p>
+                  <div className="mb-4 space-y-3">
+                    <p className="text-sm text-gray-400">Time Commitment: <span className="text-gray-300">{opp.time_commitment}</span></p>
+                    {opp.description && (
+                       <p className="text-sm text-gray-300 leading-relaxed">
+                         {opp.description}
+                       </p>
+                    )}
                   </div>
                   
                   <div className="bg-gray-900 p-4 rounded-xl border border-gray-800 mb-4">
@@ -228,7 +245,7 @@ export default function Home() {
                   </div>
                 </div>
                 
-                <div className="flex items-center justify-between mt-auto pt-4 border-t border-gray-700">
+                <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-700">
                   <div className="flex gap-2">
                     <button 
                       onClick={() => updateStatus(opp.name, "saved")}
