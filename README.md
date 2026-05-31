@@ -11,19 +11,20 @@ Opportunity Radar doesn't just search the web; it strategically evaluates your p
 
 ```mermaid
 graph LR
-    User[User Profile] --> NextJS[Next.js Frontend]
-    NextJS --> FastAPI[FastAPI Backend]
-    FastAPI --> Cache[(Semantic Cache)]
-    FastAPI --> Agent[LangChain Pipeline]
+    User["User Profile"] --> NextJS["Next.js Frontend"]
+    NextJS --> FastAPI["FastAPI Backend"]
+    FastAPI --> Cache[("Semantic Cache")]
+    FastAPI --> Redis[("Rate Limiter")]
     
-    subgraph Agent Pipeline
+    FastAPI --> Strategist
+    
+    subgraph "LangChain Agent Pipeline"
         Strategist["1. Strategist"] --> Searcher["2. Searcher"]
-        Searcher -- Tavily --> Verifier["3. Verifier"]
+        Searcher -- "Tavily API" --> Verifier["3. Verifier"]
         Verifier --> Evaluator["4. Evaluator (LLM)"]
     end
     
-    Agent --> Postgres[("PostgreSQL DB")]
-    Agent --> Redis[("Rate Limiter")]
+    Evaluator --> Postgres[("PostgreSQL DB")]
 ```
 
 ## The Agent Pipeline
