@@ -198,7 +198,7 @@ export default function Home() {
             )}
 
             {status === "done" && opportunities.map((opp, idx) => (
-              <div key={idx} className="bg-gray-800 p-6 rounded-2xl border border-gray-700 shadow-lg hover:border-gray-500 transition-colors group relative overflow-hidden flex flex-col justify-between h-full">
+              <div key={idx} className="bg-gray-800 p-6 rounded-2xl border border-gray-700 shadow-lg hover:border-gray-500 transition-colors group relative overflow-hidden flex flex-col">
                 <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-blue-500 to-emerald-500"></div>
                 
                 <div>

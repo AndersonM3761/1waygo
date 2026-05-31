@@ -47,9 +47,10 @@ async def process_profile(profile_dict: dict) -> OpportunityList:
     Goal: {profile_dict.get('goal')}
     
     Generate exactly 3 highly specific Google search queries to find the best current opportunities for them in India for 2026.
-    Use advanced search operators if needed (like site:devpost.com, site:internshala.com).
-    For a 1st/2nd year, focus on learning, open source, and beginner hackathons.
+    Use advanced search operators if needed (like site:devpost.com, site:internshala.com, site:unstop.com).
+    For a 1st/2nd year, focus on structured learning programs, beginner hackathons, and early-career fellowships.
     For a 3rd/4th year, focus on major internships, pre-placement hackathons, and niche roles in their exact branch.
+    CRITICAL STRICT RULE: DO NOT search for or return raw GitHub repositories or unstructured open source projects. Only search for structured programs, formal competitions, hackathons, and internships.
     """
     
     strategy_llm = llm.with_structured_output(SearchStrategy)
