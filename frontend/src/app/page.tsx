@@ -47,7 +47,7 @@ export default function Home() {
       console.error("Failed to fetch", error);
     } finally {
       clearTimeout(verifyingTimer);
-      if (status !== "idle") setStatus("done");
+      setStatus(prev => prev !== "idle" ? "done" : "idle");
     }
   };
 
