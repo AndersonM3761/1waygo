@@ -1,5 +1,6 @@
 import os
 import asyncio
+import re
 from typing import List, Dict, Any
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.tools.tavily_search import TavilySearchResults
@@ -14,7 +15,7 @@ def get_llm():
     return ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.2)
 
 def get_search_tool():
-    return TavilySearchResults(max_results=4)
+    return TavilySearchResults(max_results=5)
 
 async def async_search(query: str, tool: TavilySearchResults) -> List[Dict[str, Any]]:
     loop = asyncio.get_event_loop()
@@ -29,6 +30,48 @@ async def async_search(query: str, tool: TavilySearchResults) -> List[Dict[str, 
         print(f"Search error for '{query}': {e}")
         return []
 
+def extract_retry_delay(error_msg: str) -> int:
+    """Extract retry delay from Gemini rate limit error message."""
+    match = re.search(r'retryDelay.*?(\d+)', str(error_msg))
+    if match:
+        return int(match.group(1)) + 2  # Add 2s buffer
+    return 35  # Default 35s for free tier
+
+async def invoke_with_retry(llm_chain, prompt, max_retries=2):
+    """Invoke LLM with automatic retry on rate limit."""
+    for attempt in range(max_retries + 1):
+        try:
+            return await llm_chain.ainvoke(prompt)
+        except Exception as e:
+            error_str = str(e)
+            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                if attempt < max_retries:
+                    delay = extract_retry_delay(error_str)
+                    print(f"Rate limited. Waiting {delay}s before retry {attempt + 1}/{max_retries}...")
+                    await asyncio.sleep(delay)
+                else:
+                    print(f"Rate limit exceeded after {max_retries} retries.")
+                    raise e
+            else:
+                raise e
+
+def build_fallback_queries(profile_dict: dict, categories: list) -> List[str]:
+    """Generate smart fallback queries when LLM strategist fails."""
+    interests = ', '.join(profile_dict.get('interests', []))
+    branch = profile_dict.get('branch', '')
+    
+    fallbacks = []
+    for cat in categories:
+        if cat == "Hackathon":
+            fallbacks.append(f"{interests} hackathon India 2025 2026 site:unstop.com OR site:devpost.com")
+        elif cat == "Internship":
+            fallbacks.append(f"{branch} {interests} internship India 2025 site:internshala.com OR site:linkedin.com/jobs")
+        elif cat == "Certification":
+            fallbacks.append(f"{interests} free certification course 2025 site:coursera.org OR site:nptel.ac.in")
+        elif cat == "Competition":
+            fallbacks.append(f"{interests} coding competition India 2025 2026 site:unstop.com OR site:hackerearth.com")
+    return fallbacks
+
 async def process_profile(profile_dict: dict) -> OpportunityList:
     try:
         llm = get_llm()
@@ -37,74 +80,60 @@ async def process_profile(profile_dict: dict) -> OpportunityList:
         print(f"Initialization error: {e}")
         return OpportunityList(opportunities=[])
 
-    # Extract new fields with defaults
+    # Extract fields with defaults
     mode = profile_dict.get('mode', 'Any')
     duration = profile_dict.get('duration', 'Any')
     location = profile_dict.get('location', '')
     budget = profile_dict.get('budget', 'Free only')
     categories = profile_dict.get('categories', ['Hackathon', 'Internship', 'Certification', 'Competition'])
 
-    # Build dynamic query count: 2 queries per selected category (for depth), capped at 6
-    num_queries = min(len(categories) * 2, 6)
-
-    # Build category-specific instructions
-    cat_instructions = []
-    for cat in categories:
-        if cat == "Internship":
-            mode_str = f" {mode}" if mode != "Any" else ""
-            loc_str = f" in {location}" if location else " in India"
-            dur_str = f" {duration}" if duration != "Any" else ""
-            cat_instructions.append(f"- INTERNSHIP: Search for{mode_str}{dur_str} internships{loc_str} matching their branch and interests.")
-        elif cat == "Hackathon":
-            loc_str = f" in {location}" if location else " in India"
-            cat_instructions.append(f"- HACKATHON: Search for hackathons{loc_str} (online or offline) relevant to their interests.")
-        elif cat == "Certification":
-            budget_str = " that are FREE" if budget == "Free only" else ""
-            cat_instructions.append(f"- CERTIFICATION: Search for professional certifications or courses{budget_str} on platforms like Coursera, NPTEL, Google, AWS, or Microsoft relevant to their branch.")
-        elif cat == "Competition":
-            cat_instructions.append(f"- COMPETITION: Search for coding competitions, case competitions, or research competitions on platforms like Unstop, HackerEarth, or Kaggle relevant to their branch.")
+    # Build soft preference context (only for non-default values)
+    pref_lines = []
+    if mode != "Any":
+        pref_lines.append(f"The student prefers {mode} opportunities when possible, but don't exclude results just because mode doesn't match.")
+    if duration != "Any":
+        pref_lines.append(f"The student prefers {duration} duration, but include other durations too.")
+    if location:
+        pref_lines.append(f"The student is based in {location}. For internships, prefer opportunities accessible from {location}, but also include remote and pan-India opportunities.")
+    if budget == "Free only":
+        pref_lines.append("For certifications, prioritize free courses but include paid ones that are highly valuable.")
     
-    category_block = "\n    ".join(cat_instructions)
+    pref_context = "\n    ".join(pref_lines) if pref_lines else "No specific preferences — show the best opportunities available across India."
 
     # STAGE 1: Strategize
-    strategy_prompt = f"""
-    You are an expert career strategist for Indian engineering students.
-    CAREFULLY CORRECT ANY TYPOS OR MISSPELLINGS in the branch or interests before processing (e.g. "ELECTRONIC AND COMMUNICATION I" -> "Electronics and Communication Engineering", "AI ML" -> "Artificial Intelligence and Machine Learning").
+    strategy_prompt = f"""You are an expert career strategist for Indian engineering students.
+CAREFULLY CORRECT ANY TYPOS OR MISSPELLINGS in the branch or interests before processing (e.g. "CSE DATA SCIENCE" -> "Computer Science with Data Science", "AI ML" -> "Artificial Intelligence and Machine Learning", "ELECTRONIC AND COMMUNICATION I" -> "Electronics and Communication Engineering").
 
-    STUDENT PROFILE:
-    Branch: {profile_dict.get('branch')}
-    Year: {profile_dict.get('year')}
-    Interests: {', '.join(profile_dict.get('interests', []))}
-    Goal: {profile_dict.get('goal')}
-    Preferred Mode: {mode}
-    Duration: {duration}
-    Location: {location if location else "Any (India)"}
-    Certification Budget: {budget}
+STUDENT PROFILE:
+- Branch: {profile_dict.get('branch')}
+- Year: {profile_dict.get('year')}
+- Interests: {', '.join(profile_dict.get('interests', []))}
+- Career Goal: {profile_dict.get('goal')}
 
-    You MUST generate exactly {num_queries} highly specific web search queries.
-    You MUST cover ALL of the following selected categories — no exceptions:
-    {category_block}
+SOFT PREFERENCES (use as guidance, NOT hard filters):
+{pref_context}
 
-    Generate at least one query per category above. Distribute remaining queries to categories that benefit from deeper coverage.
+SELECTED CATEGORIES: {', '.join(categories)}
 
-    RULES:
-    - Use advanced search operators (site:unstop.com, site:internshala.com, site:devpost.com, site:hackerearth.com, site:linkedin.com/jobs, site:coursera.org, site:nptel.ac.in).
-    - All queries must target 2025-2026 or current — never past deadlines.
-    - For 1st/2nd year students, focus on beginner-friendly opportunities.
-    - For 3rd/4th year students, focus on pre-placement, advanced roles, and niche opportunities.
-    - NEVER search for raw GitHub repositories or unstructured open source projects.
-    """
+Generate exactly {len(categories)} targeted web search queries — ONE per selected category.
+
+CATEGORY-SPECIFIC QUERY RULES:
+- HACKATHON queries: Search platforms like Unstop, Devpost, HackerEarth. Include both online and offline hackathons. Target 2025-2026.
+- INTERNSHIP queries: Search Internshala, LinkedIn Jobs, Unstop. Include the student's specific interests in the query. Target current openings.
+- CERTIFICATION queries: Search Coursera, NPTEL, Google Cloud, AWS, Microsoft Learn. Find certifications that directly add value for their career goal. These are always available online.
+- COMPETITION queries: Search Unstop, HackerEarth, Kaggle, CodeChef. Find coding/case/research competitions relevant to their branch.
+
+IMPORTANT: Each query must include the student's specific interests (like "{', '.join(profile_dict.get('interests', []))}") — do NOT generate generic queries like "hackathon India 2026". Make them specific to this student's profile."""
     
     strategy_llm = llm.with_structured_output(SearchStrategy)
     try:
-        strategy_res = await strategy_llm.ainvoke(strategy_prompt)
+        strategy_res = await invoke_with_retry(strategy_llm, strategy_prompt)
         queries = strategy_res.queries
+        print(f"Strategist generated queries (LLM): {queries}")
     except Exception as e:
-        print(f"Error in Strategist: {e}")
-        # Fallback: one query per category
-        queries = [f"{cat.lower()} {profile_dict.get('branch')} India 2026" for cat in categories]
-
-    print(f"Strategist generated queries: {queries}")
+        print(f"Error in Strategist after retries: {e}")
+        queries = build_fallback_queries(profile_dict, categories)
+        print(f"Using fallback queries: {queries}")
 
     # STAGE 2: Search (parallel)
     search_tasks = [async_search(q, search_tool) for q in queries]
@@ -124,50 +153,46 @@ async def process_profile(profile_dict: dict) -> OpportunityList:
         context_parts.append(f"Query: {r.get('query_used', '')}\nURL: {r.get('url')}\nContent: {r.get('content')}\nDeadline Status: {r.get('deadline_status')}")
     context = "\n---\n".join(context_parts)
     
-    # Build category filter for evaluator
     allowed_types = ", ".join(categories)
 
     # STAGE 3: Evaluate & Format
-    eval_prompt = f"""
-    You are a FAANG-level AI career advisor.
-    You ran these searches: {queries}
-    
-    Here are the VERIFIED search results (all links are live, and explicitly expired ones have been removed):
-    {context}
-    
-    User Profile:
-    Branch: {profile_dict.get('branch')}
-    Year: {profile_dict.get('year')}
-    Interests: {', '.join(profile_dict.get('interests', []))}
-    Goal: {profile_dict.get('goal')}
-    Preferred Mode: {mode}
-    Duration: {duration}
-    Location: {location if location else "Any (India)"}
-    Current Date: May 2026
-    
-    ALLOWED OPPORTUNITY TYPES: {allowed_types}
-    
-    RUTHLESS EVALUATION INSTRUCTIONS:
-    1. ONLY return opportunities of type: {allowed_types}. Reject everything else.
-    2. Filter out any opportunity that a {profile_dict.get('year')} year student is NOT eligible for.
-    3. Filter out any opportunity completely irrelevant to the {profile_dict.get('branch')} branch.
-    4. If mode is "{mode}" and mode is not "Any", prioritize opportunities matching that mode.
-    5. If location is "{location}", prioritize opportunities accessible from that city.
-    6. If there are no perfect matches, find at least ONE adjacent opportunity that aligns with their interests.
-    
-    For EACH opportunity that passes:
-    - Set `type` to exactly one of: {allowed_types}
-    - Provide a `description` (2-3 sentences) explaining what the program is, what participants do, any eligibility criteria, and what they gain from it.
-    - Provide a ONE-SENTENCE personalized `reason` why THIS specific student should apply, connecting their {profile_dict.get('branch')} background and {profile_dict.get('year')} year status.
-    
-    Return the valid opportunities formatted as a JSON list.
-    """
+    eval_prompt = f"""You are a career advisor for Indian engineering students.
+You searched for: {queries}
+
+VERIFIED SEARCH RESULTS (all links are live):
+{context}
+
+STUDENT PROFILE:
+- Branch: {profile_dict.get('branch')}
+- Year: {profile_dict.get('year')}
+- Interests: {', '.join(profile_dict.get('interests', []))}
+- Career Goal: {profile_dict.get('goal')}
+- Current Date: May 2026
+
+SOFT PREFERENCES (treat as nice-to-have, NOT deal-breakers):
+{pref_context}
+
+ALLOWED OPPORTUNITY TYPES: {allowed_types}
+
+INSTRUCTIONS:
+1. ONLY return opportunities of type: {allowed_types}. Set `type` to exactly one of these.
+2. Filter out opportunities that a {profile_dict.get('year')} year student is NOT eligible for.
+3. Filter out opportunities completely irrelevant to the student's branch and interests.
+4. Preferences are SOFT — an amazing remote internship should NOT be rejected just because the student said "On-site". Include it and mention it's remote.
+5. For certifications: these are almost always available online. Include any valuable certification relevant to their career goal.
+6. Try to return at least 1 result per selected category if the search results contain it.
+
+For EACH opportunity:
+- `description`: 2-3 sentences explaining what the program is, what participants do, eligibility, and what they gain.
+- `reason`: ONE sentence connecting this to their specific {profile_dict.get('branch')} background, {profile_dict.get('year')} year status, and career goal.
+
+Return the valid opportunities formatted as a JSON list."""
     
     structured_llm = llm.with_structured_output(OpportunityList)
     try:
-        result = await structured_llm.ainvoke(eval_prompt)
+        result = await invoke_with_retry(structured_llm, eval_prompt)
         result.queries_used = queries
         return result
     except Exception as e:
-        print(f"Error in Evaluator: {e}")
+        print(f"Error in Evaluator after retries: {e}")
         return OpportunityList(opportunities=[], queries_used=queries)

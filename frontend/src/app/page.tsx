@@ -180,7 +180,7 @@ export default function Home() {
 
               {/* Divider */}
               <div className="border-t border-gray-700 pt-3 mt-1">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Preferences</p>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Preferences <span className="text-gray-600 normal-case font-normal">(optional — leave as-is for best results)</span></p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
