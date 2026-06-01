@@ -123,6 +123,12 @@ SELECTED CATEGORIES: {', '.join(categories)}
 Your job is to generate EXACTLY {len(categories)} highly specific Google Dork search queries, EXACTLY ONE for each category they selected.
 Do NOT skip any selected category. If they selected Internship or Competition, you MUST generate a query for it.
 
+CATEGORY-SPECIFIC QUERY RULES:
+- HACKATHON queries: Search platforms like Unstop, Devpost, HackerEarth. Include both online and offline hackathons. Target 2026.
+- INTERNSHIP queries: Search Internshala, LinkedIn Jobs, Unstop. Include the student's specific interests in the query. Target current openings.
+- CERTIFICATION queries: Search Coursera, NPTEL, Google Cloud, AWS, Microsoft Learn. Find certifications that directly add value for their career goal.
+- COMPETITION queries: Search Unstop, HackerEarth, Kaggle, CodeChef. Find coding/case/research competitions relevant to their branch.
+
 IMPORTANT: Each query must include the student's specific interests (like "{interests}") — do NOT generate generic queries like "hackathon India 2026". Make them specific to this student's profile.
 
 Target Indian sites where possible (e.g., site:internshala.com, site:unstop.com, site:devpost.com, site:hackerearth.com).
@@ -212,6 +218,8 @@ Return the valid opportunities formatted as a JSON list."""
                 parsed = dateparser.parse(deadline_str)
                 if parsed is None:
                     return True
+                # Make timezone naive before comparison
+                parsed = parsed.replace(tzinfo=None)
                 return parsed > datetime.now()
             except:
                 return True
@@ -220,7 +228,9 @@ Return the valid opportunities formatted as a JSON list."""
         
         # Post-filter stale deadlines
         valid_opps = [opp for opp in result.opportunities if is_deadline_future(opp.deadline)]
-        result.opportunities = valid_opps
+        if len(valid_opps) > 0:
+            result.opportunities = valid_opps
+            
         result.queries_used = queries
         return result
     except Exception as e:
