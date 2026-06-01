@@ -14,4 +14,7 @@ httpx
 psycopg2-binary
 sqlalchemy
 alembic
+asyncpg
+greenlet
+dateparser
 fakeredis

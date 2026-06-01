@@ -29,3 +29,8 @@ class SearchRequest(BaseModel):
 
 class SearchStrategy(BaseModel):
     queries: List[str]
+
+class SaveOpportunityRequest(BaseModel):
+    email: str
+    url: str
+    status: str

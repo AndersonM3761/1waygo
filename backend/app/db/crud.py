@@ -58,3 +58,47 @@ def link_user_opportunity(db: Session, user_id: str, opp_id: str, why_relevant: 
         )
         db.add(link)
         db.commit()
+
+def update_user_opportunity_status(db: Session, email: str, url: str, status: str) -> bool:
+    user = db.query(models.User).filter(models.User.email == email).first()
+    opp = db.query(models.Opportunity).filter(models.Opportunity.url == url).first()
+    
+    if not user or not opp:
+        return False
+        
+    link = db.query(models.UserOpportunity).filter(
+        models.UserOpportunity.user_id == user.id,
+        models.UserOpportunity.opportunity_id == opp.id
+    ).first()
+    
+    if link:
+        link.status = status
+        db.commit()
+        return True
+    return False
+
+def get_user_opportunities(db: Session, email: str):
+    user = db.query(models.User).filter(models.User.email == email).first()
+    if not user:
+        return []
+        
+    links = db.query(models.UserOpportunity).filter(
+        models.UserOpportunity.user_id == user.id,
+        models.UserOpportunity.status.in_(["saved", "applied"])
+    ).all()
+    
+    results = []
+    for link in links:
+        opp = db.query(models.Opportunity).filter(models.Opportunity.id == link.opportunity_id).first()
+        if opp:
+            results.append({
+                "name": opp.name,
+                "type": opp.type.value if hasattr(opp.type, 'value') else opp.type,
+                "deadline": opp.deadline,
+                "link": opp.url,
+                "description": "", # Minimal info needed for saved card
+                "time_commitment": "",
+                "reason": link.why_relevant,
+                "status": link.status
+            })
+    return results

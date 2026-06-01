@@ -37,3 +37,20 @@ async def search(request: SearchRequest, db: Session = Depends(get_db)):
         store_in_cache(profile_dict, result)
     
     return result
+
+from app.models.schemas import SaveOpportunityRequest
+from fastapi import HTTPException
+
+@router.post("/save-opportunity")
+def save_opportunity(request: SaveOpportunityRequest, db: Session = Depends(get_db)):
+    success = crud.update_user_opportunity_status(db, request.email, request.url, request.status)
+    if not success:
+        raise HTTPException(status_code=404, detail="User or opportunity not found")
+    return {"status": "success"}
+
+@router.get("/saved-opportunities")
+def get_saved_opportunities(email: str, db: Session = Depends(get_db)):
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+    opps = crud.get_user_opportunities(db, email)
+    return opps

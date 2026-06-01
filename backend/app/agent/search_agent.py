@@ -106,7 +106,7 @@ async def process_profile(profile_dict: dict) -> OpportunityList:
     pref_context = "\n    ".join(pref_lines) if pref_lines else "No specific preferences — show the best opportunities available across India."
 
     # STAGE 1: Strategize
-    strategy_prompt = f"""You are an expert career strategist for Indian engineering students.
+    strategy_prompt = f"""You are an expert career and opportunity researcher for Indian university students.
 CAREFULLY CORRECT ANY TYPOS OR MISSPELLINGS in the branch or interests before processing (e.g. "CSE DATA SCIENCE" -> "Computer Science with Data Science", "AI ML" -> "Artificial Intelligence and Machine Learning", "ELECTRONIC AND COMMUNICATION I" -> "Electronics and Communication Engineering").
 
 STUDENT PROFILE:
@@ -120,15 +120,14 @@ SOFT PREFERENCES (use as guidance, NOT hard filters):
 
 SELECTED CATEGORIES: {', '.join(categories)}
 
-Generate exactly {len(categories)} targeted web search queries — ONE per selected category.
+Your job is to generate EXACTLY {len(categories)} highly specific Google Dork search queries, EXACTLY ONE for each category they selected.
+Do NOT skip any selected category. If they selected Internship or Competition, you MUST generate a query for it.
 
-CATEGORY-SPECIFIC QUERY RULES:
-- HACKATHON queries: Search platforms like Unstop, Devpost, HackerEarth. Include both online and offline hackathons. Target 2025-2026.
-- INTERNSHIP queries: Search Internshala, LinkedIn Jobs, Unstop. Include the student's specific interests in the query. Target current openings.
-- CERTIFICATION queries: Search Coursera, NPTEL, Google Cloud, AWS, Microsoft Learn. Find certifications that directly add value for their career goal. These are always available online.
-- COMPETITION queries: Search Unstop, HackerEarth, Kaggle, CodeChef. Find coding/case/research competitions relevant to their branch.
+IMPORTANT: Each query must include the student's specific interests (like "{interests}") — do NOT generate generic queries like "hackathon India 2026". Make them specific to this student's profile.
 
-IMPORTANT: Each query must include the student's specific interests (like "{interests}") — do NOT generate generic queries like "hackathon India 2026". Make them specific to this student's profile."""
+Target Indian sites where possible (e.g., site:internshala.com, site:unstop.com, site:devpost.com, site:hackerearth.com).
+
+Return your answer strictly matching the required JSON schema."""
     
     strategy_llm = llm.with_structured_output(SearchStrategy)
     try:
@@ -203,7 +202,25 @@ Return the valid opportunities formatted as a JSON list."""
     
     structured_llm = llm.with_structured_output(OpportunityList)
     try:
+        import dateparser
+        from datetime import datetime
+        
+        def is_deadline_future(deadline_str: str) -> bool:
+            if not deadline_str or deadline_str.lower() in ["ongoing", "tbd", "rolling", "unclear"]:
+                return True
+            try:
+                parsed = dateparser.parse(deadline_str)
+                if parsed is None:
+                    return True
+                return parsed > datetime.now()
+            except:
+                return True
+                
         result = await invoke_with_retry(structured_llm, eval_prompt)
+        
+        # Post-filter stale deadlines
+        valid_opps = [opp for opp in result.opportunities if is_deadline_future(opp.deadline)]
+        result.opportunities = valid_opps
         result.queries_used = queries
         return result
     except Exception as e:

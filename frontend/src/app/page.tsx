@@ -159,17 +159,62 @@ export default function Home() {
     }
   };
 
-  const updateStatus = (id: string, newStatus: string) => {
-      const updated = {...actionStatuses, [id]: newStatus};
-      setActionStatuses(updated);
-      localStorage.setItem("radar_action_statuses", JSON.stringify(updated));
+  const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+  const fetchSavedOpportunities = async (email: string) => {
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const response = await fetch(`${apiUrl}/api/v1/saved-opportunities?email=${email}`);
+      if (response.ok) {
+        const opps = await response.json();
+        setSavedOpportunities(opps.filter((o: any) => o.status === "saved"));
+        
+        const statuses: {[key: string]: string} = {};
+        opps.forEach((o: any) => {
+          statuses[o.name] = o.status;
+        });
+        setActionStatuses(prev => ({...prev, ...statuses}));
+      }
+    } catch (e) {
+      console.error("Failed to fetch saved opportunities", e);
+    }
   };
 
-  const handleSaveOpp = (opp: any) => {
+  const updateStatus = async (opp: any, newStatus: string) => {
+      // "rejected" is purely local
+      const isLocalOnly = newStatus === "rejected" || (!newStatus && actionStatuses[opp.name] === "rejected");
+      
+      // Optimistic update
+      const updated = {...actionStatuses, [opp.name]: newStatus};
+      setActionStatuses(updated);
+      localStorage.setItem("radar_action_statuses", JSON.stringify(updated));
+
+      // API call if we have an email and it's not a purely local action
+      if (emailToSave && isValidEmail(emailToSave) && !isLocalOnly) {
+        try {
+          const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+          await fetch(`${apiUrl}/api/v1/save-opportunity`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: emailToSave, url: opp.link, status: newStatus || "new" })
+          });
+        } catch (error) {
+          // Rollback on failure
+          const rollback = {...actionStatuses};
+          setActionStatuses(rollback);
+          console.error('Save failed:', error);
+        }
+      }
+  };
+
+  const handleSaveOpp = async (opp: any) => {
     const isCurrentlySaved = actionStatuses[opp.name] === "saved";
     const newStatus = isCurrentlySaved ? "" : "saved";
-    updateStatus(opp.name, newStatus);
+    
+    // Call the unified updateStatus (which handles API)
+    await updateStatus(opp, newStatus);
 
+    // Update the local saved list for immediate UI feedback
     let updatedSaved = [...savedOpportunities];
     if (newStatus === "saved") {
       if (!updatedSaved.some(o => o.name === opp.name)) {
@@ -178,15 +223,17 @@ export default function Home() {
     } else {
       updatedSaved = updatedSaved.filter(o => o.name !== opp.name);
     }
-    
     setSavedOpportunities(updatedSaved);
     localStorage.setItem("savedOpportunities", JSON.stringify(updatedSaved));
   };
 
   const handleSaveEmail = () => {
-    if (emailToSave) {
+    if (emailToSave && isValidEmail(emailToSave)) {
       setSavedEmailSuccess(true);
-      // Currently just UI hook, persistence is handled by localStorage above
+      fetchSavedOpportunities(emailToSave);
+      localStorage.setItem("radar_email", emailToSave);
+    } else {
+      alert("Please enter a valid email address.");
     }
   };
 
@@ -568,13 +615,13 @@ export default function Home() {
                       {actionStatuses[opp.name] === "saved" ? "✓ Saved" : "Save"}
                     </button>
                     <button 
-                      onClick={() => updateStatus(opp.name, actionStatuses[opp.name] === "applied" ? "" : "applied")}
+                      onClick={() => updateStatus(opp, actionStatuses[opp.name] === "applied" ? "" : "applied")}
                       className={`text-xs px-3 py-1.5 rounded-md font-medium transition-all duration-200 ${actionStatuses[opp.name] === "applied" ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/20" : "bg-gray-700 hover:bg-gray-600 text-gray-300"}`}
                     >
                       {actionStatuses[opp.name] === "applied" ? "✓ Applied" : "Applied"}
                     </button>
                     <button 
-                      onClick={() => updateStatus(opp.name, actionStatuses[opp.name] === "rejected" ? "" : "rejected")}
+                      onClick={() => updateStatus(opp, actionStatuses[opp.name] === "rejected" ? "" : "rejected")}
                       className={`text-xs px-3 py-1.5 rounded-md font-medium transition-all duration-200 ${actionStatuses[opp.name] === "rejected" ? "bg-red-600/80 text-white" : "bg-gray-700 hover:bg-gray-600 text-gray-300"}`}
                     >
                       {actionStatuses[opp.name] === "rejected" ? "✗ Hidden" : "Not Interested"}
