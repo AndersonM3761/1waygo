@@ -3,8 +3,9 @@ import re
 from typing import Dict, Any, List
 import asyncio
 
-# Years that are strictly in the past (Current date: 2026)
-PAST_YEARS = r"\b(202[0-5])\b"
+# Better — only drop if the DEADLINE is clearly past
+# Don't drop snippets that merely reference 2025 in passing
+PAST_YEARS = r"(?i)deadline[:\s]+.*(202[0-4]|2025)"
 
 async def verify_url_live(url: str) -> bool:
     """
