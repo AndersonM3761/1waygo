@@ -4,6 +4,9 @@ from app.api.routes import router as api_router
 
 app = FastAPI(title="Opportunity Radar API", version="1.0.0")
 
+from app.db.database import engine, Base
+Base.metadata.create_all(bind=engine)
+
 import os
 
 # Setup CORS to allow Next.js frontend (local or production)
