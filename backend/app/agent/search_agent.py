@@ -205,17 +205,17 @@ For EACH opportunity:
 - `reason`: ONE sentence connecting this to their specific {branch} background, {year} year status, and career goal. (Or explaining why it was included as a fallback match).
 
 Return the valid opportunities formatted as a JSON list."""
-    
+
     structured_llm = llm.with_structured_output(OpportunityList)
     try:
-        import dateparser
         from datetime import datetime
         
         def is_deadline_future(deadline_str: str) -> bool:
             if not deadline_str or deadline_str.lower() in ["ongoing", "tbd", "rolling", "unclear"]:
                 return True
             try:
-                parsed = dateparser.parse(deadline_str)
+                from dateutil import parser as dateutil_parser
+                parsed = dateutil_parser.parse(deadline_str, fuzzy=True)
                 if parsed is None:
                     return True
                 # Make timezone naive before comparison
