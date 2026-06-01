@@ -1,4 +1,4 @@
-# Opportunity Radar 🎯
+# 1waygo 🎯
 
 > Hyper-personalized career opportunity discovery for engineering students, powered by FAANG-tier Agentic AI.
 
