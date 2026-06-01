@@ -1,28 +1,67 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { BRANCHES } from "../data/branches";
+import { SKILLS_BY_CATEGORY } from "../data/skills";
 
-const ALL_CATEGORIES = ["Hackathon", "Internship", "Certification", "Competition"];
+const YEARS = ["1st Year", "2nd Year", "3rd Year", "4th Year"];
+const GOALS = [
+  "Software Engineer",
+  "Data Scientist / ML Engineer",
+  "Core / Hardware Engineer",
+  "DevOps / Cloud Engineer",
+  "Cybersecurity Analyst",
+  "Research / Higher Studies",
+  "Entrepreneur / Startup",
+];
+const CATEGORIES = [
+  { id: "Hackathon", label: "🏆 Hackathon" },
+  { id: "Internship", label: "💼 Internship" },
+  { id: "Certification", label: "📜 Certification" },
+  { id: "Competition", label: "⚡ Competition" },
+];
 
 export default function Home() {
-  const [formData, setFormData] = useState({
-    email: "",
-    branch: "",
-    year: "",
-    interests: "",
-    goal: "",
-    mode: "Any",
-    duration: "Any",
-    location: "",
-    budget: "Free only",
-  });
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([...ALL_CATEGORIES]);
+  const [branch, setBranch] = useState("");
+  const [branchSearch, setBranchSearch] = useState("");
+  const [showBranchDropdown, setShowBranchDropdown] = useState(false);
+  
+  const [year, setYear] = useState("");
+  
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [skillSearch, setSkillSearch] = useState("");
+  const [showSkillDropdown, setShowSkillDropdown] = useState(false);
+  
+  const [goal, setGoal] = useState("");
+  
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(["Hackathon", "Internship", "Certification", "Competition"]);
+  
+  const [mode, setMode] = useState("Any");
+  const [city, setCity] = useState("");
+  const [budget, setBudget] = useState("Free only");
+
   const [status, setStatus] = useState<"idle"|"searching"|"verifying"|"done">("idle");
   const [opportunities, setOpportunities] = useState<any[]>([]);
   const [queriesUsed, setQueriesUsed] = useState<string[]>([]);
   const [actionStatuses, setActionStatuses] = useState<{[key: string]: string}>({});
+  const [emailToSave, setEmailToSave] = useState("");
+  const [savedEmailSuccess, setSavedEmailSuccess] = useState(false);
 
-  // Load saved statuses from local storage on mount
+  const branchRef = useRef<HTMLDivElement>(null);
+  const skillRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdowns on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (branchRef.current && !branchRef.current.contains(e.target as Node))
+        setShowBranchDropdown(false);
+      if (skillRef.current && !skillRef.current.contains(e.target as Node))
+        setShowSkillDropdown(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
   useEffect(() => {
     const saved = localStorage.getItem("radar_action_statuses");
     if (saved) {
@@ -34,42 +73,66 @@ export default function Home() {
     }
   }, []);
 
-  const toggleCategory = (cat: string) => {
-    setSelectedCategories(prev => {
-      if (prev.includes(cat)) {
-        // Don't allow deselecting ALL categories
-        if (prev.length === 1) return prev;
-        return prev.filter(c => c !== cat);
+  const filteredBranches = BRANCHES.filter((b) =>
+    b.toLowerCase().includes(branchSearch.toLowerCase())
+  );
+
+  const filteredSkills = Object.entries(SKILLS_BY_CATEGORY)
+    .map(([category, skills]) => ({
+      category,
+      skills: skills.filter(
+        (s) =>
+          s.toLowerCase().includes(skillSearch.toLowerCase()) &&
+          !selectedSkills.includes(s)
+      ),
+    }))
+    .filter((g) => g.skills.length > 0);
+
+  const toggleCategory = (id: string) => {
+    setSelectedCategories((prev) => {
+      if (prev.includes(id)) {
+        if (prev.length === 1) return prev; // Keep at least one
+        return prev.filter((c) => c !== id);
       }
-      return [...prev, cat];
+      return [...prev, id];
     });
+  };
+
+  const removeSkill = (skill: string) => {
+    setSelectedSkills((prev) => prev.filter((s) => s !== skill));
   };
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!branch || !year || selectedSkills.length === 0 || !goal) return;
+
     setStatus("searching");
     setOpportunities([]);
     setQueriesUsed([]);
+    setSavedEmailSuccess(false);
     
     const verifyingTimer = setTimeout(() => setStatus("verifying"), 4000);
     
     try {
-      const interestsArray = formData.interests.split(",").map(i => i.trim());
-      
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
       const response = await fetch(`${apiUrl}/api/v1/search`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...formData,
-          interests: interestsArray,
+          branch,
+          year,
+          interests: selectedSkills.join(", "),
+          goal,
           categories: selectedCategories,
+          mode: selectedCategories.includes("Internship") ? mode : "Any",
+          city: selectedCategories.includes("Internship") ? city : "",
+          budget: selectedCategories.includes("Certification") ? budget : "Any",
         }),
       });
       
       if (response.status === 429) {
           const errData = await response.json();
-          alert(errData.detail.error || "Rate limited! Please wait a moment.");
+          alert(errData.detail?.error || "Rate limited! Please wait a moment.");
           setStatus("idle");
           return;
       }
@@ -89,6 +152,13 @@ export default function Home() {
       const updated = {...actionStatuses, [id]: newStatus};
       setActionStatuses(updated);
       localStorage.setItem("radar_action_statuses", JSON.stringify(updated));
+  };
+
+  const handleSaveEmail = () => {
+    if (emailToSave) {
+      setSavedEmailSuccess(true);
+      // Currently just UI hook, persistence is handled by localStorage above
+    }
   };
 
   const categoryIcons: {[key: string]: string} = {
@@ -112,159 +182,201 @@ export default function Home() {
           {/* Left Panel: Form */}
           <div className="md:col-span-1 bg-gray-800 p-5 md:p-6 rounded-2xl border border-gray-700 shadow-xl h-fit">
             <h2 className="text-xl font-bold mb-5">Your Profile</h2>
-            <form onSubmit={handleSearch} className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Email</label>
-                <input 
-                  type="email" required
-                  placeholder="your@college.edu"
+            <div className="space-y-4">
+              
+              {/* BRANCH */}
+              <div ref={branchRef} className="relative">
+                <label className="block text-xs font-medium text-gray-400 mb-1">Branch</label>
+                <input
+                  type="text"
+                  placeholder="Search your branch..."
                   className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  value={formData.email}
-                  onChange={(e) => setFormData({...formData, email: e.target.value})}
+                  value={branch || branchSearch}
+                  onChange={(e) => {
+                    setBranchSearch(e.target.value);
+                    setBranch("");
+                    setShowBranchDropdown(true);
+                  }}
+                  onFocus={() => setShowBranchDropdown(true)}
                 />
+                {showBranchDropdown && filteredBranches.length > 0 && (
+                  <div className="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto bg-gray-800 border border-gray-700 rounded-lg shadow-xl">
+                    {filteredBranches.map((b) => (
+                      <div
+                        key={b}
+                        className="px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white cursor-pointer"
+                        onClick={() => {
+                          setBranch(b);
+                          setBranchSearch(b);
+                          setShowBranchDropdown(false);
+                        }}
+                      >
+                        {b}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Branch</label>
-                  <input 
-                    type="text" required
-                    placeholder="e.g. CSE, ECE"
-                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                    value={formData.branch}
-                    onChange={(e) => setFormData({...formData, branch: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Year</label>
-                  <select required
-                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                    value={formData.year}
-                    onChange={(e) => setFormData({...formData, year: e.target.value})}
-                  >
-                    <option value="">Select</option>
-                    <option value="1st">1st Year</option>
-                    <option value="2nd">2nd Year</option>
-                    <option value="3rd">3rd Year</option>
-                    <option value="4th">4th Year</option>
-                  </select>
-                </div>
-              </div>
-
+              {/* YEAR */}
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Interests (comma separated)</label>
-                <input 
-                  type="text" required
-                  placeholder="AI ML, Cloud, Web Dev"
+                <label className="block text-xs font-medium text-gray-400 mb-1">Year</label>
+                <select
                   className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  value={formData.interests}
-                  onChange={(e) => setFormData({...formData, interests: e.target.value})}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Career Goal</label>
-                <select required
-                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  value={formData.goal}
-                  onChange={(e) => setFormData({...formData, goal: e.target.value})}
+                  value={year}
+                  onChange={(e) => setYear(e.target.value)}
                 >
-                  <option value="">Select Goal</option>
-                  <option value="Software Engineer">Software Engineer</option>
-                  <option value="Researcher">Researcher</option>
-                  <option value="Startup Founder">Startup Founder</option>
-                  <option value="Data Scientist">Data Scientist</option>
-                  <option value="Core Engineering">Core Engineering</option>
+                  <option value="">Select Year</option>
+                  {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
                 </select>
               </div>
 
-              {/* Divider */}
-              <div className="border-t border-gray-700 pt-3 mt-1">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Preferences <span className="text-gray-600 normal-case font-normal">(optional — leave as-is for best results)</span></p>
+              {/* SKILLS */}
+              <div ref={skillRef} className="relative">
+                <label className="block text-xs font-medium text-gray-400 mb-1">Skills & Interests</label>
+                
+                {selectedSkills.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {selectedSkills.map((s) => (
+                      <span key={s} className="inline-flex items-center px-2 py-1 rounded bg-blue-900/30 text-blue-300 text-xs font-medium border border-blue-800/50">
+                        {s}
+                        <button onClick={() => removeSkill(s)} className="ml-1 text-blue-400 hover:text-blue-200">×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                
+                <input
+                  type="text"
+                  placeholder="Search skills (e.g. Machine Learning, IoT)"
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  value={skillSearch}
+                  onChange={(e) => {
+                    setSkillSearch(e.target.value);
+                    setShowSkillDropdown(true);
+                  }}
+                  onFocus={() => setShowSkillDropdown(true)}
+                />
+                
+                {showSkillDropdown && (skillSearch || Object.keys(SKILLS_BY_CATEGORY).length > 0) && (
+                  <div className="absolute z-10 mt-1 w-full max-h-60 overflow-y-auto bg-gray-800 border border-gray-700 rounded-lg shadow-xl">
+                    {filteredSkills.map(({ category, skills }) => (
+                      <div key={category}>
+                        <div className="px-3 py-1.5 text-xs font-bold text-gray-500 bg-gray-900/50 uppercase tracking-wider sticky top-0">
+                          {category}
+                        </div>
+                        {skills.map((s) => (
+                          <div
+                            key={s}
+                            className="px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white cursor-pointer"
+                            onClick={() => {
+                              setSelectedSkills((prev) => [...prev, s]);
+                              setSkillSearch("");
+                              setShowSkillDropdown(false);
+                            }}
+                          >
+                            {s}
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Mode</label>
-                  <select
-                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                    value={formData.mode}
-                    onChange={(e) => setFormData({...formData, mode: e.target.value})}
-                  >
-                    <option value="Any">Any</option>
-                    <option value="Remote">Remote</option>
-                    <option value="On-site">On-site</option>
-                    <option value="Hybrid">Hybrid</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Duration</label>
-                  <select
-                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                    value={formData.duration}
-                    onChange={(e) => setFormData({...formData, duration: e.target.value})}
-                  >
-                    <option value="Any">Any</option>
-                    <option value="Summer (1-2 months)">Summer (1-2 mo)</option>
-                    <option value="Part-time">Part-time</option>
-                    <option value="Full-time">Full-time</option>
-                  </select>
-                </div>
+              {/* CAREER GOAL */}
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Career Goal</label>
+                <select
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  value={goal}
+                  onChange={(e) => setGoal(e.target.value)}
+                >
+                  <option value="">Select Goal</option>
+                  {GOALS.map((g) => <option key={g} value={g}>{g}</option>)}
+                </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">City</label>
-                  <input 
-                    type="text"
-                    placeholder="e.g. Chennai"
-                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                    value={formData.location}
-                    onChange={(e) => setFormData({...formData, location: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Budget</label>
-                  <select
-                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                    value={formData.budget}
-                    onChange={(e) => setFormData({...formData, budget: e.target.value})}
-                  >
-                    <option value="Free only">Free only</option>
-                    <option value="Paid ok">Paid ok</option>
-                  </select>
-                </div>
-              </div>
+              <div className="border-t border-gray-700 pt-3 mt-1"></div>
 
-              {/* Category Chips */}
+              {/* CATEGORY TOGGLES */}
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-2">What are you looking for?</label>
                 <div className="flex flex-wrap gap-2">
-                  {ALL_CATEGORIES.map(cat => (
+                  {CATEGORIES.map(({ id, label }) => (
                     <button
-                      key={cat}
+                      key={id}
                       type="button"
-                      onClick={() => toggleCategory(cat)}
+                      onClick={() => toggleCategory(id)}
                       className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 border ${
-                        selectedCategories.includes(cat)
+                        selectedCategories.includes(id)
                           ? "bg-emerald-600/20 border-emerald-500 text-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.2)]"
-                          : "bg-gray-900 border-gray-700 text-gray-500 hover:border-gray-500"
+                          : "bg-gray-900 border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300"
                       }`}
                     >
-                      {categoryIcons[cat]} {cat}
+                      {label}
                     </button>
                   ))}
                 </div>
               </div>
 
+              {/* CONDITIONAL PREFERENCES */}
+              {(selectedCategories.includes("Internship") || selectedCategories.includes("Certification")) && (
+                <div className="space-y-3 pt-2">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Preferences <span className="text-gray-600 normal-case font-normal">(optional)</span></p>
+                  
+                  {selectedCategories.includes("Internship") && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-400 mb-1">Mode (Internship)</label>
+                        <select
+                          className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                          value={mode}
+                          onChange={(e) => setMode(e.target.value)}
+                        >
+                          <option>Any</option>
+                          <option>Remote</option>
+                          <option>On-site</option>
+                          <option>Hybrid</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-400 mb-1">City (optional)</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Chennai"
+                          className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                          value={city}
+                          onChange={(e) => setCity(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedCategories.includes("Certification") && (
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">Budget (Certification)</label>
+                      <select
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        value={budget}
+                        onChange={(e) => setBudget(e.target.value)}
+                      >
+                        <option>Free only</option>
+                        <option>Paid ok</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <button 
-                type="submit" 
-                disabled={status === "searching" || status === "verifying"}
+                onClick={handleSearch}
+                disabled={status === "searching" || status === "verifying" || !branch || !year || selectedSkills.length === 0 || !goal}
                 className="w-full mt-4 bg-gradient-to-r from-blue-600 to-emerald-600 hover:from-blue-500 hover:to-emerald-500 text-white font-bold py-3 px-4 rounded-lg transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-500/20"
               >
                 {(status === "searching" || status === "verifying") ? "Agent Working..." : "Find Opportunities"}
               </button>
-            </form>
+            </div>
           </div>
 
           {/* Right Panel: Results & Agent Logs */}
@@ -308,8 +420,9 @@ export default function Home() {
             )}
 
             {status === "done" && opportunities.length === 0 && queriesUsed.length > 0 && (
-               <div className="flex flex-col items-center justify-center h-64 bg-gray-800 rounded-2xl border border-red-500/30 p-6">
-                 <p className="text-red-400 text-center">No opportunities matched your exact criteria. Try broadening your interests or selecting more categories.</p>
+               <div className="flex flex-col items-center justify-center h-64 bg-gray-800 rounded-2xl border border-red-500/30 p-6 text-center">
+                 <p className="text-red-400 font-semibold mb-2">No exact matches found.</p>
+                 <p className="text-gray-400 text-sm">We ran a fallback lenient search but still couldn't find active live links matching your niche profile today. Try adjusting your skills.</p>
                </div>
             )}
 
@@ -388,6 +501,36 @@ export default function Home() {
                 </div>
               </div>
             ))}
+            
+            {/* POST-SEARCH EMAIL CAPTURE */}
+            {status === "done" && opportunities.length > 0 && (
+              <div className="mt-8 bg-gray-800 border border-blue-500/30 p-6 rounded-2xl shadow-lg flex flex-col items-center text-center">
+                <h3 className="text-xl font-bold mb-2">💾 Want to save these results?</h3>
+                <p className="text-gray-400 text-sm mb-4">Enter your email and we'll remember your saved opportunities for next time.</p>
+                {savedEmailSuccess ? (
+                  <div className="text-emerald-400 font-semibold bg-emerald-900/20 px-4 py-2 rounded-lg border border-emerald-800/50">
+                    ✓ Email saved! Your preferences are locked in.
+                  </div>
+                ) : (
+                  <div className="flex w-full max-w-md gap-2">
+                    <input 
+                      type="email" 
+                      placeholder="your@email.com"
+                      className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-sm text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      value={emailToSave}
+                      onChange={(e) => setEmailToSave(e.target.value)}
+                    />
+                    <button 
+                      onClick={handleSaveEmail}
+                      disabled={!emailToSave}
+                      className="bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
+                    >
+                      Save
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

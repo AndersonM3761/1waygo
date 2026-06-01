@@ -34,11 +34,11 @@ def extract_retry_delay(error_msg: str) -> int:
     """Extract retry delay from Gemini rate limit error message."""
     match = re.search(r'retryDelay.*?(\d+)', str(error_msg))
     if match:
-        return int(match.group(1)) + 2  # Add 2s buffer
-    return 35  # Default 35s for free tier
+        return min(int(match.group(1)) + 2, 15)  # Cap at 15 seconds max
+    return 15
 
-async def invoke_with_retry(llm_chain, prompt, max_retries=2):
-    """Invoke LLM with automatic retry on rate limit."""
+async def invoke_with_retry(llm_chain, prompt, max_retries=1):
+    """Invoke LLM with one retry on rate limit. Fails fast to avoid hanging."""
     for attempt in range(max_retries + 1):
         try:
             return await llm_chain.ainvoke(prompt)
@@ -47,17 +47,17 @@ async def invoke_with_retry(llm_chain, prompt, max_retries=2):
             if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
                 if attempt < max_retries:
                     delay = extract_retry_delay(error_str)
-                    print(f"Rate limited. Waiting {delay}s before retry {attempt + 1}/{max_retries}...")
+                    print(f"Rate limited. Waiting {delay}s before retry...")
                     await asyncio.sleep(delay)
                 else:
-                    print(f"Rate limit exceeded after {max_retries} retries.")
+                    print(f"Rate limit exceeded. Giving up.")
                     raise e
             else:
                 raise e
 
 def build_fallback_queries(profile_dict: dict, categories: list) -> List[str]:
     """Generate smart fallback queries when LLM strategist fails."""
-    interests = ', '.join(profile_dict.get('interests', []))
+    interests = profile_dict.get('interests', '')
     branch = profile_dict.get('branch', '')
     
     fallbacks = []
@@ -86,6 +86,10 @@ async def process_profile(profile_dict: dict) -> OpportunityList:
     location = profile_dict.get('location', '')
     budget = profile_dict.get('budget', 'Free only')
     categories = profile_dict.get('categories', ['Hackathon', 'Internship', 'Certification', 'Competition'])
+    interests = profile_dict.get('interests', '')
+    branch = profile_dict.get('branch', '')
+    year = profile_dict.get('year', '')
+    goal = profile_dict.get('goal', '')
 
     # Build soft preference context (only for non-default values)
     pref_lines = []
@@ -105,10 +109,10 @@ async def process_profile(profile_dict: dict) -> OpportunityList:
 CAREFULLY CORRECT ANY TYPOS OR MISSPELLINGS in the branch or interests before processing (e.g. "CSE DATA SCIENCE" -> "Computer Science with Data Science", "AI ML" -> "Artificial Intelligence and Machine Learning", "ELECTRONIC AND COMMUNICATION I" -> "Electronics and Communication Engineering").
 
 STUDENT PROFILE:
-- Branch: {profile_dict.get('branch')}
-- Year: {profile_dict.get('year')}
-- Interests: {', '.join(profile_dict.get('interests', []))}
-- Career Goal: {profile_dict.get('goal')}
+- Branch: {branch}
+- Year: {year}
+- Interests: {interests}
+- Career Goal: {goal}
 
 SOFT PREFERENCES (use as guidance, NOT hard filters):
 {pref_context}
@@ -123,7 +127,7 @@ CATEGORY-SPECIFIC QUERY RULES:
 - CERTIFICATION queries: Search Coursera, NPTEL, Google Cloud, AWS, Microsoft Learn. Find certifications that directly add value for their career goal. These are always available online.
 - COMPETITION queries: Search Unstop, HackerEarth, Kaggle, CodeChef. Find coding/case/research competitions relevant to their branch.
 
-IMPORTANT: Each query must include the student's specific interests (like "{', '.join(profile_dict.get('interests', []))}") — do NOT generate generic queries like "hackathon India 2026". Make them specific to this student's profile."""
+IMPORTANT: Each query must include the student's specific interests (like "{interests}") — do NOT generate generic queries like "hackathon India 2026". Make them specific to this student's profile."""
     
     strategy_llm = llm.with_structured_output(SearchStrategy)
     try:
@@ -163,10 +167,10 @@ VERIFIED SEARCH RESULTS (all links are live):
 {context}
 
 STUDENT PROFILE:
-- Branch: {profile_dict.get('branch')}
-- Year: {profile_dict.get('year')}
-- Interests: {', '.join(profile_dict.get('interests', []))}
-- Career Goal: {profile_dict.get('goal')}
+- Branch: {branch}
+- Year: {year}
+- Interests: {interests}
+- Career Goal: {goal}
 - Current Date: May 2026
 
 SOFT PREFERENCES (treat as nice-to-have, NOT deal-breakers):
@@ -176,15 +180,23 @@ ALLOWED OPPORTUNITY TYPES: {allowed_types}
 
 INSTRUCTIONS:
 1. ONLY return opportunities of type: {allowed_types}. Set `type` to exactly one of these.
-2. Filter out opportunities that a {profile_dict.get('year')} year student is NOT eligible for.
+2. Filter out opportunities that a {year} year student is NOT eligible for.
 3. Filter out opportunities completely irrelevant to the student's branch and interests.
 4. Preferences are SOFT — an amazing remote internship should NOT be rejected just because the student said "On-site". Include it and mention it's remote.
 5. For certifications: these are almost always available online. Include any valuable certification relevant to their career goal.
 6. Try to return at least 1 result per selected category if the search results contain it.
 
+EVALUATOR FALLBACK MODE:
+If fewer than 3 opportunities pass your strict filter above, 
+switch to LENIENT mode: include any opportunity that is 
+at least 50% relevant to the student's branch and interests. 
+Always return a minimum of 3 results. If truly nothing exists,
+return the 3 closest matches with a note explaining the partial match in the `reason` field.
+Never return zero results.
+
 For EACH opportunity:
 - `description`: 2-3 sentences explaining what the program is, what participants do, eligibility, and what they gain.
-- `reason`: ONE sentence connecting this to their specific {profile_dict.get('branch')} background, {profile_dict.get('year')} year status, and career goal.
+- `reason`: ONE sentence connecting this to their specific {branch} background, {year} year status, and career goal. (Or explaining why it was included as a fallback match).
 
 Return the valid opportunities formatted as a JSON list."""
     

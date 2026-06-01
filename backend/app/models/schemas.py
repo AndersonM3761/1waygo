@@ -1,4 +1,5 @@
-from pydantic import BaseModel
+import uuid
+from pydantic import BaseModel, Field
 from typing import List, Optional
 
 class Opportunity(BaseModel):
@@ -15,10 +16,10 @@ class OpportunityList(BaseModel):
     opportunities: List[Opportunity]
 
 class SearchRequest(BaseModel):
-    email: str = "anonymous@test.com"
+    email: str = Field(default_factory=lambda: f"anon_{uuid.uuid4()}@temp.com")
     branch: str
     year: str
-    interests: List[str]
+    interests: str
     goal: str
     mode: str = "Any"           # Remote / On-site / Hybrid / Any
     duration: str = "Any"       # Summer (1-2 months) / Part-time / Any

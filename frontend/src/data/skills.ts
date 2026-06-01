@@ -1,0 +1,73 @@
+export const SKILLS_BY_CATEGORY = {
+  "AI / ML": [
+    "Machine Learning",
+    "Deep Learning",
+    "Computer Vision",
+    "Natural Language Processing",
+    "Generative AI / LLMs",
+    "Data Science",
+    "Reinforcement Learning",
+  ],
+  "Software Development": [
+    "Web Development",
+    "Full Stack Development",
+    "Mobile App Development",
+    "Backend Development",
+    "Frontend Development",
+    "React / Next.js",
+    "Node.js",
+    "Python",
+    "Java",
+    "C++",
+  ],
+  "Cloud & DevOps": [
+    "Cloud Computing (AWS)",
+    "Cloud Computing (Azure)",
+    "Cloud Computing (GCP)",
+    "DevOps / CI-CD",
+    "Docker / Kubernetes",
+    "Linux / Shell Scripting",
+  ],
+  "Data": [
+    "Data Analytics",
+    "Data Engineering",
+    "SQL / Databases",
+    "Power BI / Tableau",
+    "Excel / Spreadsheet Analysis",
+  ],
+  "Embedded & Hardware": [
+    "Embedded Systems",
+    "IoT",
+    "Raspberry Pi",
+    "Arduino / ESP32",
+    "PLC / HMI / SCADA",
+    "PCB Design",
+    "VLSI / FPGA",
+    "AutoCAD",
+    "SolidWorks",
+  ],
+  "Robotics & Automation": [
+    "Robotics",
+    "Industrial Automation",
+    "Control Systems",
+    "ROS (Robot Operating System)",
+    "3D Printing / Prototyping",
+  ],
+  "Cybersecurity": [
+    "Cybersecurity",
+    "Ethical Hacking",
+    "Network Security",
+    "Cryptography",
+  ],
+  "Other": [
+    "Blockchain",
+    "AR / VR",
+    "Game Development",
+    "UI / UX Design",
+    "Research / Academia",
+    "Finance / Fintech",
+  ],
+};
+
+// Flat list for search
+export const ALL_SKILLS = Object.values(SKILLS_BY_CATEGORY).flat();
