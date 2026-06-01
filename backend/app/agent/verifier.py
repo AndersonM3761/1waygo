@@ -14,17 +14,21 @@ async def verify_url_live(url: str) -> bool:
     if not url:
         return False
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=3.0) as client:
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+        async with httpx.AsyncClient(follow_redirects=True, timeout=3.0, headers=headers) as client:
             response = await client.head(url)
             # If head fails, try get (some sites block HEAD)
-            if response.status_code == 405:
+            if response.status_code in [405, 403]:
                 response = await client.get(url)
             
-            if response.status_code == 200:
+            # 403, 401, 429 often mean the site is live but blocking the bot. 404 is dead.
+            if response.status_code != 404:
                 return True
             return False
     except Exception as e:
         print(f"URL Verification failed for {url}: {e}")
+        # If it's a timeout or connection error, we can safely assume it might be dead or unreachable, but let's be slightly lenient if we want.
+        # Returning False here is fine for now.
         return False
 
 def check_stale_deadline(snippet: str) -> str:
