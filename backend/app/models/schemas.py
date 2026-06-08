@@ -4,6 +4,7 @@ from typing import List, Optional
 
 class Opportunity(BaseModel):
     name: str
+    organization: str = ""  # Company, university, or platform hosting it
     type: str  # Hackathon, Certification, Competition, Internship
     deadline: str
     link: str

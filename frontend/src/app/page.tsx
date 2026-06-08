@@ -639,6 +639,9 @@ export default function Home() {
                       </span>
                     </div>
                     <h3 className="text-lg font-bold text-white group-hover:text-blue-400 transition-colors">{opp.name}</h3>
+                    {opp.organization && (
+                      <p className="text-sm text-gray-400">by <span className="text-blue-400 font-medium">{opp.organization}</span></p>
+                    )}
                   </div>
                   <span className="text-xs font-medium text-gray-400 bg-gray-900 px-2.5 py-1 rounded-lg border border-gray-700 whitespace-nowrap ml-3">
                     ⏱ {opp.deadline}

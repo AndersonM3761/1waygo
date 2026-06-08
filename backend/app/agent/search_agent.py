@@ -57,20 +57,20 @@ async def invoke_with_retry(llm_chain, prompt, max_retries=1):
                 raise e
 
 def build_fallback_queries(profile_dict: dict, categories: list) -> List[str]:
-    """Generate smart fallback queries when LLM strategist fails."""
+    """Generate targeted queries that find specific opportunity pages, not generic listing pages."""
     interests = profile_dict.get('interests', '')
     branch = profile_dict.get('branch', '')
     
     fallbacks = []
     for cat in categories:
         if cat == "Hackathon":
-            fallbacks.append(f"{interests} hackathon India 2025 2026 site:unstop.com OR site:devpost.com")
+            fallbacks.append(f'{interests} hackathon 2025 2026 "register" OR "apply" OR "participate" India')
         elif cat == "Internship":
-            fallbacks.append(f"{branch} {interests} internship India 2025 site:internshala.com OR site:linkedin.com/jobs")
+            fallbacks.append(f'{interests} {branch} internship 2025 2026 "apply now" OR "hiring" OR "openings" India')
         elif cat == "Certification":
-            fallbacks.append(f"{interests} free certification course 2025 site:coursera.org OR site:nptel.ac.in")
+            fallbacks.append(f'{interests} professional certificate OR certification course 2025 2026 "enroll" OR "free"')
         elif cat == "Competition":
-            fallbacks.append(f"{interests} coding competition India 2025 2026 site:unstop.com OR site:hackerearth.com")
+            fallbacks.append(f'{interests} coding competition OR challenge 2025 2026 "register" OR "participate" India')
     return fallbacks
 
 async def process_profile(profile_dict: dict) -> OpportunityList:
@@ -133,7 +133,6 @@ async def process_profile(profile_dict: dict) -> OpportunityList:
 
     # STAGE 3: Evaluate & Format
     eval_prompt = f"""You are a career advisor for Indian engineering students.
-You searched for: {queries}
 
 VERIFIED SEARCH RESULTS (all links are live):
 {context}
@@ -143,41 +142,34 @@ STUDENT PROFILE:
 - Year: {year}
 - Interests: {interests}
 - Career Goal: {goal}
-- Current Date: May 2026
+- Current Date: June 2026
 
 SOFT PREFERENCES (treat as nice-to-have, NOT deal-breakers):
 {pref_context}
 
-ALLOWED OPPORTUNITY TYPES: {allowed_types}
+SELECTED CATEGORIES: {allowed_types}
 
-INSTRUCTIONS:
+MANDATORY RULES:
 1. ONLY return opportunities of type: {allowed_types}. Set `type` to exactly one of these.
-2. Filter out opportunities that a {year} year student is NOT eligible for.
-3. Filter out opportunities completely irrelevant to the student's branch and interests.
-4. Preferences are SOFT — an amazing remote internship should NOT be rejected just because the student said "On-site". Include it and mention it's remote.
-5. For certifications: these are almost always available online. Include any valuable certification relevant to their career goal.
-6. Try to return at least 1 result per selected category if the search results contain it.
+2. You MUST return at least 1 result for EACH selected category: {allowed_types}. This is NOT optional. If a category has weak matches, pick the best available one and note it in the `reason` field.
+3. Filter out opportunities that a {year} year student is NOT eligible for.
+4. Preferences are SOFT — an amazing remote internship should NOT be rejected just because the student said "On-site".
 
-EVALUATOR FALLBACK MODE:
-If fewer than 3 opportunities pass your strict filter above, 
-switch to LENIENT mode: include any opportunity that is 
-at least 50% relevant to the student's branch and interests. 
-Always return a minimum of 3 results. If truly nothing exists,
-return the 3 closest matches with a note explaining the partial match in the `reason` field.
-Never return zero results.
-
-TASK:
-Review the verified search results above. Filter them down to the absolute best matches for this specific student's profile.
-If a result is completely irrelevant or low quality, IGNORE IT.
-
-HIGH-VALUE CRITERIA TO ENFORCE:
-1. Hackathons & Competitions: Is there evidence of prestige, history (e.g. held every year), or significant presence/reliable hosts that have track records of pushing careers forward? If it looks like a low-effort or spammy hackathon, DROP IT.
-2. Internships: Is it from a trustworthy, recognizable company? OR, if it's from a smaller startup, does the description prove it offers REAL value, mentorship, and tangible skill-building for their career path? (Since not everyone gets into FAANG, high-value startups are great, but cheap labor disguised as internships should be DROPPED).
-3. Certifications: Only keep certifications that carry actual industry weight and respect.
-
-If a result passes these strict checks, format it as a JSON object matching the OpportunityList schema.
+FIELD FORMATTING RULES:
+- `name`: The specific name of the opportunity (e.g. "Google Summer of Code 2026", not just "Internship").
+- `organization`: The company, university, or platform hosting this opportunity (e.g. "Google", "IIT Bombay", "Unstop"). NEVER leave this empty.
+- `link`: Use the EXACT URL from the search results. NEVER use a generic search page or listing page URL. The link must point to the specific opportunity.
 - `description`: 2-3 sentences explaining what the program is, what participants do, eligibility, and what they gain.
-- `reason`: ONE sentence connecting this to their specific {branch} background, {year} year status, and career goal. (Or explaining why it was included as a fallback match).
+- `reason`: ONE sentence explaining why this specific opportunity matches this student's {branch} background, {interests}, and {goal}.
+- `deadline`: Extract from the content if available. Use "Ongoing" or "Rolling" if not specified.
+- `time_commitment`: Extract duration if available (e.g. "2 months", "6 weeks", "Self-paced").
+
+QUALITY CRITERIA:
+1. Hackathons & Competitions: Prefer well-known hosts with a track record. Drop anything that looks spammy or low-effort.
+2. Internships: Prefer trustworthy companies. For startups, only include if the description shows real mentorship and skill-building, not cheap labor.
+3. Certifications: Only keep certifications with actual industry recognition (e.g. from Google, AWS, Microsoft, Coursera specializations, NPTEL).
+
+Always return a minimum of 3 results total. Never return zero results.
 
 Return the valid opportunities formatted as a JSON list."""
 
