@@ -1,13 +1,14 @@
 import asyncio
 import os
+import json
 from app.agent.search_agent import process_profile
 
 async def main():
     profile = {
-        "branch": "Mechatronics Engineering",
-        "year": "3rd Year",
-        "interests": "Embedded Systems, PCB Design, PLC / HMI / SCADA",
-        "goal": "Core / Hardware Engineer",
+        "branch": "Computer Science Engineering",
+        "year": "2nd Year",
+        "interests": "Machine Learning, Computer Vision",
+        "goal": "Software Engineer",
         "mode": "Any",
         "duration": "Any",
         "location": "",
@@ -18,6 +19,8 @@ async def main():
     try:
         result = await process_profile(profile)
         print(f"Generated {len(result.opportunities)} opportunities")
+        for o in result.opportunities:
+            print(f"- {o.name}")
     except Exception as e:
         print(f"FAILED WITH EXCEPTION: {e}")
 

@@ -730,7 +730,7 @@ export default function Home() {
         <footer className="mt-16 pb-8 text-center text-gray-500 text-sm border-t border-gray-800 pt-8">
           <p>
             Built by <span className="font-semibold text-gray-400">Anderson</span>. 
-            Powered by Gemini 2.5 Flash & Next.js.
+            Powered by Google Gemini & Next.js.
           </p>
           <p className="mt-1 text-xs opacity-60">© 2026 1waygo. All rights reserved.</p>
         </footer>
