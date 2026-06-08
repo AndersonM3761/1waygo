@@ -18,7 +18,6 @@ const CATEGORIES = [
   { id: "Hackathon", label: "🏆 Hackathon" },
   { id: "Internship", label: "💼 Internship" },
   { id: "Certification", label: "📜 Certification" },
-  { id: "Competition", label: "⚡ Competition" },
 ];
 
 export default function Home() {
@@ -34,7 +33,7 @@ export default function Home() {
   
   const [goal, setGoal] = useState("");
   
-  const [selectedCategories, setSelectedCategories] = useState<string[]>(["Hackathon", "Internship", "Certification", "Competition"]);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(["Hackathon", "Internship", "Certification"]);
   
   const [mode, setMode] = useState("Any");
   const [city, setCity] = useState("");
@@ -270,7 +269,6 @@ export default function Home() {
     Hackathon: "🏆",
     Internship: "💼",
     Certification: "📜",
-    Competition: "⚡",
   };
 
   return (

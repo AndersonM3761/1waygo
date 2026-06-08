@@ -13,14 +13,14 @@ async def main():
         "duration": "Any",
         "location": "",
         "budget": "Free only",
-        "categories": ["Hackathon", "Internship", "Certification", "Competition"]
+        "categories": ["Hackathon", "Internship", "Certification"]
     }
     print("Running process_profile...")
     try:
         result = await process_profile(profile)
         print(f"Generated {len(result.opportunities)} opportunities")
         for o in result.opportunities:
-            print(f"- {o.name}")
+            print(f"- [{o.type}] {o.name} | Org: {o.organization} | Deadline: {o.deadline} | Link: {o.link[:80]}")
     except Exception as e:
         print(f"FAILED WITH EXCEPTION: {e}")
 

@@ -60,17 +60,16 @@ def build_fallback_queries(profile_dict: dict, categories: list) -> List[str]:
     """Generate targeted queries that find specific opportunity pages, not generic listing pages."""
     interests = profile_dict.get('interests', '')
     branch = profile_dict.get('branch', '')
+    goal = profile_dict.get('goal', '')
     
     fallbacks = []
     for cat in categories:
         if cat == "Hackathon":
-            fallbacks.append(f'{interests} hackathon 2025 2026 "register" OR "apply" OR "participate" India')
+            fallbacks.append(f'{goal} {interests} hackathon 2025 2026 "register" OR "apply" India')
         elif cat == "Internship":
-            fallbacks.append(f'{interests} {branch} internship 2025 2026 "apply now" OR "hiring" OR "openings" India')
+            fallbacks.append(f'{goal} {interests} internship 2025 2026 "apply now" OR "hiring" India')
         elif cat == "Certification":
-            fallbacks.append(f'{interests} professional certificate OR certification course 2025 2026 "enroll" OR "free"')
-        elif cat == "Competition":
-            fallbacks.append(f'{interests} coding competition OR challenge 2025 2026 "register" OR "participate" India')
+            fallbacks.append(f'{goal} {interests} professional certificate OR certification 2025 2026 "enroll" OR "free"')
     return fallbacks
 
 async def process_profile(profile_dict: dict) -> OpportunityList:
@@ -86,7 +85,7 @@ async def process_profile(profile_dict: dict) -> OpportunityList:
     duration = profile_dict.get('duration', 'Any')
     location = profile_dict.get('location', '')
     budget = profile_dict.get('budget', 'Free only')
-    categories = profile_dict.get('categories', ['Hackathon', 'Internship', 'Certification', 'Competition'])
+    categories = profile_dict.get('categories', ['Hackathon', 'Internship', 'Certification'])
     interests = profile_dict.get('interests', '')
     branch = profile_dict.get('branch', '')
     year = profile_dict.get('year', '')
@@ -109,9 +108,17 @@ async def process_profile(profile_dict: dict) -> OpportunityList:
     queries = build_fallback_queries(profile_dict, categories)
     print(f"Search queries: {queries}")
 
-    # STAGE 2: Search (parallel)
+    # STAGE 2: Search (parallel) — tag each result with its source category
+    category_query_pairs = list(zip(categories, queries))
     search_tasks = [async_search(q, search_tool) for q in queries]
     nested_raw_results = await asyncio.gather(*search_tasks)
+    
+    # Tag each result with its source category
+    for i, results in enumerate(nested_raw_results):
+        cat = categories[i]
+        for r in results:
+            r['source_category'] = cat
+    
     flat_raw_results = [item for sublist in nested_raw_results for item in sublist]
     
     # STAGE 2.5: Verify
@@ -121,13 +128,18 @@ async def process_profile(profile_dict: dict) -> OpportunityList:
     if not verified_results:
         print("All search results failed verification (dead links or expired).")
         return OpportunityList(opportunities=[], queries_used=queries)
-        
-    context_parts = []
-    for r in verified_results:
-        # TRUNCATE to 1500 chars to avoid hitting Gemini 1M TPM rate limit on free tier!
-        content_snippet = r.get('content', '')[:1500] 
-        context_parts.append(f"Query: {r.get('query_used', '')}\nURL: {r.get('url')}\nContent: {content_snippet}\nDeadline Status: {r.get('deadline_status')}")
-    context = "\n---\n".join(context_parts)
+    
+    # Group results by category so the Evaluator can clearly see what belongs where
+    context_sections = []
+    for cat in categories:
+        cat_results = [r for r in verified_results if r.get('source_category') == cat]
+        if cat_results:
+            section = f"=== {cat.upper()} RESULTS ===\n"
+            for r in cat_results:
+                content_snippet = r.get('content', '')[:1500]
+                section += f"URL: {r.get('url')}\nContent: {content_snippet}\n---\n"
+            context_sections.append(section)
+    context = "\n".join(context_sections)
     
     allowed_types = ", ".join(categories)
 
@@ -154,14 +166,15 @@ MANDATORY RULES:
 2. You MUST return at least 1 result for EACH selected category: {allowed_types}. This is NOT optional. If a category has weak matches, pick the best available one and note it in the `reason` field.
 3. Filter out opportunities that a {year} year student is NOT eligible for.
 4. Preferences are SOFT — an amazing remote internship should NOT be rejected just because the student said "On-site".
+5. Focus on the student's CAREER GOAL ({goal}) as the primary filter. Skills ({interests}) are secondary. An opportunity that advances their career goal is more valuable than one that just matches a skill keyword.
 
 FIELD FORMATTING RULES:
 - `name`: The specific name of the opportunity (e.g. "Google Summer of Code 2026", not just "Internship").
 - `organization`: The company, university, or platform hosting this opportunity (e.g. "Google", "IIT Bombay", "Unstop"). NEVER leave this empty.
-- `link`: Use the EXACT URL from the search results. NEVER use a generic search page or listing page URL. The link must point to the specific opportunity.
+- `link`: Use the EXACT URL from the search results that points to the SPECIFIC opportunity page. REJECT any URL that is a generic company careers page, a search results page, or a listing page with filters. The user must land on the specific opportunity when they click.
 - `description`: 2-3 sentences explaining what the program is, what participants do, eligibility, and what they gain.
-- `reason`: ONE sentence explaining why this specific opportunity matches this student's {branch} background, {interests}, and {goal}.
-- `deadline`: Extract from the content if available. Use "Ongoing" or "Rolling" if not specified.
+- `reason`: ONE sentence explaining why this specific opportunity matches this student's career goal of becoming a {goal}.
+- `deadline`: Extract the specific date from the content (e.g. "30 Jun 2026"). If the opportunity is always open, use "Rolling". If it's a self-paced course, use "Self-paced". NEVER use "Unclear" or "TBD".
 - `time_commitment`: Extract duration if available (e.g. "2 months", "6 weeks", "Self-paced").
 
 QUALITY CRITERIA:
